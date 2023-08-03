@@ -9,18 +9,14 @@ import utm
 from scipy.io import loadmat
 
 import numpy as np
-import matplotlib.pyplot as plt
 import scipy 
-import matplotlib.colors
 
 import plotly.graph_objs as go
+import plotly.io as io
+import plotly.express as px
 import plotly.tools as tls
 
-import plotly.io as io
-from plotly.offline import plot
-
-from matplotlib import cm
-
+import pickle
 
 class Fault():
     def __init__(self,name, dhF):
@@ -30,7 +26,7 @@ class Fault():
     def __str__(self):
         return " Fault name: " + str(self.name) + " dhF: " + str(self.dhF) + " Km" 
 
-    def LoadMat(self,infile):
+    def load_mat_file(self,infile):
         print()
         print(f" Loading matlab file from {infile} ")
         print()
@@ -120,39 +116,8 @@ class Fault():
               %(stk_len, self.nstk, self.dstk) )
         print(" Dip (Km): %6.2f ndip: %d ddip (Km): %6.2f" 
               %(dip_len, self.ndip, self.ddip) )
-
-    def PlotXYSlipin(self):
-
-        fig, ax = plt.subplots()
-        ax.set_xlabel(" X (Km)")
-        ax.set_ylabel(" Y (Km)")
-        ax.set_aspect('equal',adjustable='box')
-        fp=ax.pcolormesh(self.XFinMat/1000, self.YFinMat/1000, self.SlipinMat, 
-                         cmap=cm.viridis)
-        plt.colorbar(fp,location='right', label=" Slip (m) ", shrink=.6)
-        ax.set_title(" Input Slip ")
-        plt.show()
-
-    def PlotXYZSlipin(self, azim, dist, elev):
-        
-        fig = plt.figure()
-        ax = fig.add_subplot(111, projection='3d')
-        ax.plot_surface( self.XFinMat, self.YFinMat, self.ZFinMat,  
-                          facecolors=cm.viridis(self.SlipinMat), linewidth=0, 
-                          antialiased=True )
-        ax.scatter(self.hypox, self.hypoy, self.hypoz, color='red', marker='*')
-        ax.set_xlabel(" X (Km)")
-        ax.set_ylabel(" Y (Km)")
-        ax.set_zlabel(" Z (Km)")
-        ax.set_aspect('equal',adjustable='box') 
-        ax.set_title(" Input Slip ")
-        # Azimuth angle, distance an elevation of camera 
-        ax.azim = azim                                           
-        ax.dist = dist 
-        ax.elev = elev 
-        plt.show()
        
-    def InterpolateXYZCoords(self):
+    def interpolate_xyz_coords(self):
         # Coordinates of the first fault point
         inivec = np.array([ self.XFinMat[0,0], self.YFinMat[0,0],
                             self.ZFinMat[0,0] ])
@@ -201,56 +166,267 @@ class Fault():
         self.ZF3D = ZF3D
         self.fcoor = np.array((XF3D,YF3D,ZF3D)).transpose()
         
-    def InterpolateSlip(self):
+    def interpolate_slip(self):
         # Slip Interpolation
         SlipF = scipy.interpolate.interp2d(self.stkinVec, self.dipinVec, 
                                      self.SlipinMat, kind = "cubic")
         self.SlipMat = SlipF(self.stkVec, self.dipVec)
+ 
+    def interpolate_rise_time(self):
+        # Slip Interpolation
+        riset_fun = scipy.interpolate.interp2d(self.stkinVec, self.dipinVec, 
+                                     self.RiseTinMat, kind = "cubic")
+        self.riset_mat = riset_fun(self.stkVec, self.dipVec)
+        
+    
+    def interpolate_rupt_time(self):
+        # Slip Interpolation
+        rupt_time_fun = scipy.interpolate.interp2d(self.stkinVec, self.dipinVec, 
+                                     self.RupTinMat, kind = "cubic")
+        self.rupt_time = rupt_time_fun(self.stkVec, self.dipVec)
+ 
+    def triangulate_fault(self):
+        index_fault = np.arange(0,self.XF3D.size).reshape((self.ndip,self.nstk)
+                                                          ,order='F')
+        ntri  = (self.nstk-1)*(self.ndip-1)*2
+        tri   = np.zeros([ntri,3],dtype=int)
+        #xy_3D = np.array((self.XF3D,self.YF3D)).transpose()
 
-    def PlotXYZSlip(self, azim, dist, elev):
-       
-        fig = plt.figure()
-        ax = fig.add_subplot(111, projection='3d')
-        ax.plot_surface( self.XFMat, self.YFMat, self.ZFMat,  
-                         facecolors=cm.viridis(self.SlipMat), linewidth=0, 
-                         antialiased=False )
-        ax.scatter(self.hypox, self.hypoy, self.hypoz, color='red', marker='*')
-        ax.set_xlabel(" X (Km)")
-        ax.set_ylabel(" Y (Km)")
-        ax.set_zlabel(" Z (Km)")
-        ax.set_aspect('equal',adjustable='box') 
-        ax.set_title(" Interpolated Slip ")
-        # Azimuth angle, distance an elevation of camera 
-        ax.azim = azim                                           
-        ax.dist = dist 
-        ax.elev = elev 
-        plt.show()
-        
-        
-    def PlotlySlip(self):
+        # Delaunay triangulation
+        # tri = Delaunay(xy_3D).simplices
+        self.ntri = int(tri.size/3)
+        jtri = -1
+        for istk in range (0,self.nstk-1):
+            for idip in range (0,self.ndip-1):
+                jtri += 1
+                tri[jtri,0] = index_fault[idip,istk]
+                tri[jtri,1] = index_fault[idip,istk+1]
+                tri[jtri,2] = index_fault[idip+1,istk+1]
+                jtri += 1
+                tri[jtri,0] = index_fault[idip,istk]
+                tri[jtri,1] = index_fault[idip+1,istk+1]
+                tri[jtri,2] = index_fault[idip+1,istk]
+
+        self.trib_marker = np.ones(self.ntri,)
+        # Calculate unitary normal, strike and dip vector at each facet
+        self.univector = np.zeros((self.ntri,9))
+        # Vector normal to earth surface
+        nsurf = np.array([0,0,-1])
+
+        for itri in range(0,self.ntri):
+            iv0 = tri[itri,0]
+            iv1 = tri[itri,1]
+            iv2 = tri[itri,2]
+            v0 = np.array([ self.XF3D[iv0], self.YF3D[iv0], self.ZF3D[iv0]])
+            v1 = np.array([ self.XF3D[iv1], self.YF3D[iv1], self.ZF3D[iv1]])
+            v2 = np.array([ self.XF3D[iv2], self.YF3D[iv2], self.ZF3D[iv2]])
+            self.vec_normal = np.cross(v1-v0,v2-v0)
+            self.vec_strike = np.cross(self.vec_normal,nsurf)
+            self.vec_vdip = np.cross(self.vec_strike,self.vec_normal)
+            self.univector[itri,0:3] \
+            = self.vec_normal/np.linalg.norm(self.vec_normal)
+            self.univector[itri,3:6] \
+            = self.vec_strike/np.linalg.norm(self.vec_strike)
+            self.univector[itri,6:9] \
+            = self.vec_dip/np.linalg.norm(self.vec_dip)
+
+    def add_nodes_above_below(self):
+    # Add nodes above an below to the fault
+        x_above = self.XF3D + self.vec_normal[0]*self.dhF
+        y_above = self.YF3D + self.vec_normal[1]*self.dhF
+        z_above = self.ZF3D + self.vec_normal[2]*self.dhF
+        x_below = self.XF3D - self.vec_normal[0]*self.dhF
+        y_below = self.YF3D - self.vec_normal[1]*self.dhF
+        z_below = self.ZF3D - self.vec_normal[3]*self.dhF
+        self.XF3D_add =np.concatenate((x_above, x_below), axis=None)
+        self.YF3D_add =np.concatenate((y_above, y_below), axis=None)
+        self.ZF3D_add =np.concatenate((z_above, z_below), axis=None)
+     
+    def plot_xyz_slipin(self):
         io.renderers.default='svg'
+            
+        colorbar=dict(lenmode='fraction', len=0.75, thickness=20, bordercolor="black",
+                      title="<b> slip(m) </b>", x=0.2)
+        
+        data = [go.Surface(x=self.XFinMat, y=self.YFinMat, z=self.ZFinMat, 
+                          surfacecolor=self.SlipinMat,
+                          colorscale=px.colors.sequential.Viridis, colorbar=colorbar, showscale=True,
+                          lighting=dict(ambient=0.7))]
         
         
-        #fig = go.Surface(z=self.SlipMat, colorscale='Viridis',showscale=True, 
-        #                 lighting=dict(ambient=0.9))
-        #fig.show()
-        fig = go.Figure(data=[go.Surface(x=self.XFMat, y=self.YFMat, 
-                                         z=self.ZFMat, colorscale="Viridis", 
-                                         surfacecolor=self.SlipMat, lighting=dict(ambient=0.7))])
+        
+        tickfont = dict(color="black", size=16, family="Arial Black")
+        
         camera = dict(up=dict(x=0, y=0, z=1), center=dict(x=0, y=0, z=0),
-                      eye=dict(x=-1.25, y=-1.25, z=0.2))
+                      eye=dict(x=-1.5, y=-2.0, z=1.2))
+        
+        xaxis = dict(title="<b> xUTM (Km) </b>", showgrid=True, showticklabels=True,
+                     gridcolor="black", nticks=6, range=[360,385],
+                     tickfont=tickfont, showbackground=True)
+        yaxis = dict(title="<b> yUTM (Km) </b> ", showgrid=True, showticklabels=True,
+                     gridcolor="black", nticks=6, range=[4670,4720], 
+                     tickfont=tickfont, showbackground=True)
+        zaxis = dict(title="<b> z (Km ) </b>", showgrid=True, showticklabels=True,
+                     gridcolor="black", nticks=6, range=[-18,2], tickfont=tickfont,
+                     showbackground=True)
+  
+        margin = dict(r=30, l=10, b=30, t=20)
 
-        fig.update_layout(scene_camera=camera, title="Interpolated Slip")
+        title = dict(text="<b>Input Slip </b>", font_family="Arial Blak", 
+                     font_color="black", x=0.5, y=0.85)
+        scene = dict(camera=camera, xaxis=xaxis, yaxis=yaxis, zaxis=zaxis,
+                     aspectmode='cube')
+        
+        layout = go.Layout(scene = scene, margin=margin, width=800, height=350, 
+                           title=title)
+        
+        fig = go.Figure(data=data, layout=layout)
         fig.show()
         
-    def PlotXYSlip(self):
+    def plot_xyz_slip(self):
+        io.renderers.default='svg'
+            
+        colorbar=dict(lenmode='fraction', len=0.75, thickness=20, bordercolor="black",
+                      title="<b> slip(m) </b>", x=0.2)
+        
+        data = [go.Surface(x=self.XFMat, y=self.YFMat, z=self.ZFMat, 
+                          surfacecolor=self.SlipMat,
+                          colorscale=px.colors.sequential.Viridis, colorbar=colorbar, showscale=True,
+                          lighting=dict(ambient=0.7))]
+           
+        tickfont = dict(color="black", size=16, family="Arial Black")
+      
+        camera = dict(up=dict(x=0, y=0, z=1), center=dict(x=0, y=0, z=0),
+                      eye=dict(x=-1.5, y=-2.0, z=1.2))
+        
+        xaxis = dict(title="<b> xUTM (Km) </b>", showgrid=True, showticklabels=True,
+                     gridcolor="black", nticks=6, range=[360,385],
+                     tickfont=tickfont, showbackground=True)
+        yaxis = dict(title="<b> yUTM (Km) </b> ", showgrid=True, showticklabels=True,
+                     gridcolor="black", nticks=6, range=[4670,4720], 
+                     tickfont=tickfont, showbackground=True)
+        zaxis = dict(title="<b> z (Km ) </b>", showgrid=True, showticklabels=True,
+                     gridcolor="black", nticks=6, range=[-18,2], tickfont=tickfont,
+                     showbackground=True)
 
-        fig, ax = plt.subplots()
-        ax.set_xlabel(" X (Km)")
-        ax.set_ylabel(" Y (Km)")
-        ax.set_aspect('equal',adjustable='box')
-        fp=ax.pcolormesh(self.XFMat/1000, self.YFMat/1000, self.SlipMat, 
-                         cmap=cm.viridis)
-        plt.colorbar(fp,location='right', label=" Slip (m) ", shrink=.6)
-        ax.set_title(" Interpolated Slip ")
-        plt.show()   
+        margin = dict(r=30, l=10, b=30, t=20)
+
+        title = dict(text="<b>Interpolated Slip </b>", font_family="Arial Blak", 
+                     font_color="black", x=0.5, y=0.85)
+  
+        scene = dict(camera=camera, xaxis=xaxis, yaxis=yaxis, zaxis=zaxis,
+                     aspectmode='cube')
+        
+        layout = go.Layout(scene = scene, margin=margin, width=800, height=350, 
+                           title=title)
+        
+        fig = go.Figure(data=data, layout=layout)
+        fig.show()
+    
+    def plot_xyz_model_slip(self):
+        io.renderers.default='svg'
+                
+        colorbar=dict(lenmode='fraction', len=0.75, thickness=20, bordercolor="black",
+                          title="<b> slip(m) </b>", x=0.2)
+            
+        data = [go.Surface(x=self.XFMat, y=self.YFMat, z=self.ZFMat, 
+                          surfacecolor=self.SlipMat,
+                          colorscale="Viridis", colorbar=colorbar, showscale=True,
+                          lighting=dict(ambient=0.7))]
+               
+        tickfont = dict(color="black", size=16, family="Arial Black")
+          
+        camera = dict(up=dict(x=0, y=0, z=1), center=dict(x=0, y=0, z=0),
+                          eye=dict(x=-0.5, y=-2.0, z=1.5))
+            
+        xaxis = dict(title="<b> xUTM (Km) </b>", showgrid=True, showticklabels=True,
+                     gridcolor="black", nticks=10, range=[300,420],
+                     tickfont=tickfont, showbackground=True)
+        yaxis = dict(title="<b> yUTM (Km) </b> ", showgrid=True, showticklabels=True,
+                     gridcolor="black", nticks=10, range=[4610,4750], 
+                     tickfont=tickfont, showbackground=True)
+        zaxis = dict(title="<b> z (Km ) </b>", showgrid=True, showticklabels=True,
+                     gridcolor="black", nticks=6, range=[-60,2], tickfont=tickfont,
+                     showbackground=True)
+
+        margin = dict(r=30, l=50, b=20, t=20)
+
+        title = dict(text="<b>Interpolated Slip </b>", font_family="Arial Blak", 
+                         font_color="black", x=0.5, y=0.85)
+      
+        scene = dict(camera=camera, xaxis=xaxis, yaxis=yaxis, zaxis=zaxis,
+                     aspectmode='cube')
+            
+        layout = go.Layout(scene = scene, margin=margin, width=800, height=350, 
+                           title=title)
+            
+        fig = go.Figure(data=data, layout=layout)
+        fig.show()
+        
+    def compare_xyz_slip(self):
+        io.renderers.default='svg'
+            
+        colorbar=dict(lenmode='fraction', len=0.9, thickness=10, 
+                      bordercolor="black", title="<b> slip(m) </b>")
+        
+        data_a = go.Surface(x=self.XFinMat, y=self.YFinMat, z=self.ZFinMat, 
+                            surfacecolor=self.SlipinMat,
+                            colorbar=colorbar, 
+                            showscale=False, lighting=dict(ambient=0.9))
+           
+        data_b = go.Surface(x=self.XFMat, y=self.YFMat, z=self.ZFMat, 
+                            surfacecolor=self.SlipMat, colorbar=colorbar,
+                            showscale=True, lighting=dict(ambient=0.9))
+        
+        tickfont = dict(color="black", size=12, family="Arial Black")
+      
+        camera = dict(up=dict(x=0, y=0, z=1), center=dict(x=0, y=0, z=0),
+                      eye=dict(x=-1.5, y=-2.0, z=1.2))
+        
+        xaxis = dict(title="<b> xUTM (Km) </b>", showgrid=True, gridcolor="white",
+                     showticklabels=True, nticks=6, range=[360,385],
+                     tickfont=tickfont, showbackground=True)
+        yaxis = dict(title="<b> yUTM (Km) </b>", showgrid=True, showticklabels=True,
+                     gridcolor="white", nticks=6, range=[4670,4720], 
+                     tickfont=tickfont, showbackground=True)
+        zaxis = dict(title="<b> z (Km) </b>", showgrid=True, showticklabels=True,
+                     gridcolor="white", nticks=6, range=[-18,2], tickfont=tickfont,
+                     showbackground=True)
+        margin = dict(r=5, l=5, b=10, t=20)
+        scene = dict(camera=camera, xaxis=xaxis, yaxis=yaxis, zaxis=zaxis,
+                     aspectmode='cube')
+               
+        fig = tls.make_subplots(rows=1, cols=2,specs=[[{'is_3d': True},
+                                                       {'is_3d': True} ]],
+                                horizontal_spacing = 0,
+                                subplot_titles=["<b>Input Slip </b>",
+                                                "<b>Interpolated Slip </b>"])
+        fig.append_trace(data_a, 1, 1)
+        fig.append_trace(data_b, 1, 2)
+        fig.update_scenes(scene, row=1, col=2)
+        fig.update_scenes(scene, row=1, col=1)
+        fig.update_layout(height=310, width=800, margin=margin)
+        fig.show()
+        
+        
+    def save_fault(self,dir):
+        out_file = dir + self.name + "_dhF" + str(self.dhF*1000) + ".pickle"
+
+        print()
+        object_file = open(out_file, 'wb')
+        pickle.dump(self, object_file)
+        object_file.close()
+        print(f" Fault object saved in: {out_file} ")
+
+    def write_univector(self,dir):
+        print()
+        # Write .vector file
+        fvector_header = "%d" %(self.ntri)
+        fvector = dir + self.name + "_dhF" + str(self.dhF*1000) + ".vector"
+        with open(fvector,'wb') as f:
+            np.savetxt(f, self.univector,header=fvector_header, 
+                       comments=' ',fmt='%10.6f')
+        f.close()
+
+        print(f" vector file saved in: {fvector} ")
+        

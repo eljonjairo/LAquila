@@ -37,17 +37,20 @@ if __name__ == '__main__':
     LAquilaFault = Fault.Fault(name,dhF)
     print(LAquilaFault)
 
-    LAquilaFault.LoadMat('../Input/s2009LAQUIL03CIRE.mat')
-    LAquilaFault.PlotXYSlipin()
-    LAquilaFault.PlotXYZSlipin(-120,10,10)   
-    LAquilaFault.InterpolateXYZCoords()
-    LAquilaFault.InterpolateSlip()
-    LAquilaFault.PlotXYSlip()
-    LAquilaFault.PlotXYZSlip(-120,10,10)   
-    
-    LAquilaFault.PlotlySlip()
+    LAquilaFault.load_mat_file('../Input/s2009LAQUIL03CIRE.mat')
+   
+    #LAquilaFault.plot_xyz_slipin()
+    LAquilaFault.interpolate_xyz_coords()
+    LAquilaFault.interpolate_slip()
+    LAquilaFault.interpolate_rise_time()
+    LAquilaFault.interpolate_rupt_time()
+  
+   # LAquilaFault.plot_xyz_slip()
+   # LAquilaFault.plot_xyz_model_slip()
+    LAquilaFault.compare_xyz_slip()
 
-
+    #LAquilaFault.write_univector(out_dir)
+    #LAquilaFault.save_fault(out_dir)
 
 
 
