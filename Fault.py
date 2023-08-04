@@ -15,13 +15,14 @@ import plotly.graph_objs as go
 import plotly.io as io
 import plotly.express as px
 import plotly.tools as tls
+import plotly.figure_factory as ff
 
 import pickle
 
 class Fault():
     def __init__(self,name, dhF):
-        self.name = name
         self.dhF = dhF
+        self.name = name + "_dhF" + str(int(self.dhF*1000)) + "m"
 
     def __str__(self):
         return " Fault name: " + str(self.name) + " dhF: " + str(self.dhF) + " Km" 
@@ -117,6 +118,11 @@ class Fault():
         print(" Dip (Km): %6.2f ndip: %d ddip (Km): %6.2f" 
               %(dip_len, self.ndip, self.ddip) )
        
+    # *************************************************************************
+    # *                                                                       *
+    # *              Interpolation methods section                            *
+    # *                                                                       *
+    # *************************************************************************
     def interpolate_xyz_coords(self):
         # Coordinates of the first fault point
         inivec = np.array([ self.XFinMat[0,0], self.YFinMat[0,0],
@@ -164,6 +170,7 @@ class Fault():
         self.XF3D = XF3D
         self.YF3D = YF3D
         self.ZF3D = ZF3D
+        self.n_sub_faults = self.nstk*self.ndip
         self.fcoor = np.array((XF3D,YF3D,ZF3D)).transpose()
         
     def interpolate_slip(self):
@@ -185,28 +192,36 @@ class Fault():
                                      self.RupTinMat, kind = "cubic")
         self.rupt_time = rupt_time_fun(self.stkVec, self.dipVec)
  
+    # *************************************************************************
+    # *                                                                       *
+    # *         Triangulatiopn methods section                                *
+    # *                                                                       *
+    # *************************************************************************
     def triangulate_fault(self):
+        print()
+        print(" Fault Triangulation")
         index_fault = np.arange(0,self.XF3D.size).reshape((self.ndip,self.nstk)
                                                           ,order='F')
         ntri  = (self.nstk-1)*(self.ndip-1)*2
-        tri   = np.zeros([ntri,3],dtype=int)
+        self.tri   = np.zeros([ntri,3],dtype=int)
         #xy_3D = np.array((self.XF3D,self.YF3D)).transpose()
 
         # Delaunay triangulation
         # tri = Delaunay(xy_3D).simplices
-        self.ntri = int(tri.size/3)
+        self.ntri = int(self.tri.size/3)
         jtri = -1
         for istk in range (0,self.nstk-1):
             for idip in range (0,self.ndip-1):
                 jtri += 1
-                tri[jtri,0] = index_fault[idip,istk]
-                tri[jtri,1] = index_fault[idip,istk+1]
-                tri[jtri,2] = index_fault[idip+1,istk+1]
+                self.tri[jtri,0] = index_fault[idip,istk]
+                self.tri[jtri,1] = index_fault[idip,istk+1]
+                self.tri[jtri,2] = index_fault[idip+1,istk+1]
                 jtri += 1
-                tri[jtri,0] = index_fault[idip,istk]
-                tri[jtri,1] = index_fault[idip+1,istk+1]
-                tri[jtri,2] = index_fault[idip+1,istk]
-
+                self.tri[jtri,0] = index_fault[idip,istk]
+                self.tri[jtri,1] = index_fault[idip+1,istk+1]
+                self.tri[jtri,2] = index_fault[idip+1,istk]
+        
+        print(f" Number of facets: {ntri}")
         self.trib_marker = np.ones(self.ntri,)
         # Calculate unitary normal, strike and dip vector at each facet
         self.univector = np.zeros((self.ntri,9))
@@ -214,15 +229,15 @@ class Fault():
         nsurf = np.array([0,0,-1])
 
         for itri in range(0,self.ntri):
-            iv0 = tri[itri,0]
-            iv1 = tri[itri,1]
-            iv2 = tri[itri,2]
+            iv0 = self.tri[itri,0]
+            iv1 = self.tri[itri,1]
+            iv2 = self.tri[itri,2]
             v0 = np.array([ self.XF3D[iv0], self.YF3D[iv0], self.ZF3D[iv0]])
             v1 = np.array([ self.XF3D[iv1], self.YF3D[iv1], self.ZF3D[iv1]])
             v2 = np.array([ self.XF3D[iv2], self.YF3D[iv2], self.ZF3D[iv2]])
             self.vec_normal = np.cross(v1-v0,v2-v0)
             self.vec_strike = np.cross(self.vec_normal,nsurf)
-            self.vec_vdip = np.cross(self.vec_strike,self.vec_normal)
+            self.vec_dip = np.cross(self.vec_strike,self.vec_normal)
             self.univector[itri,0:3] \
             = self.vec_normal/np.linalg.norm(self.vec_normal)
             self.univector[itri,3:6] \
@@ -242,6 +257,11 @@ class Fault():
         self.YF3D_add =np.concatenate((y_above, y_below), axis=None)
         self.ZF3D_add =np.concatenate((z_above, z_below), axis=None)
      
+    # *************************************************************************
+    # *                                                                       *
+    # *                 Plots methods section                                 *
+    # *                                                                       *
+    # *************************************************************************
     def plot_xyz_slipin(self):
         io.renderers.default='svg'
             
@@ -407,12 +427,48 @@ class Fault():
         fig.update_scenes(scene, row=1, col=1)
         fig.update_layout(height=310, width=800, margin=margin)
         fig.show()
+    
+    def plot_triangulation(self):
+        tickfont = dict(color="black", size=12, family="Arial Black")
+      
+        camera = dict(up=dict(x=0, y=0, z=1), center=dict(x=0, y=0, z=0),
+                      eye=dict(x=-1.5, y=-2.0, z=1.2))
         
+        xaxis = dict(title="<b> xUTM (Km) </b>", showgrid=True, gridcolor="white",
+                     showticklabels=True, nticks=6, range=[360,385],
+                     tickfont=tickfont, showbackground=True)
+        yaxis = dict(title="<b> yUTM (Km) </b>", showgrid=True, showticklabels=True,
+                     gridcolor="white", nticks=6, range=[4670,4720], 
+                     tickfont=tickfont, showbackground=True)
+        zaxis = dict(title="<b> z (Km) </b>", showgrid=True, showticklabels=True,
+                     gridcolor="white", nticks=6, range=[-18,2], tickfont=tickfont,
+                     showbackground=True)
+        margin = dict(r=5, l=5, b=10, t=20)
         
+        scene = dict(camera=camera, xaxis=xaxis, yaxis=yaxis, zaxis=zaxis,
+                     aspectmode='cube')
+        
+        title = dict(text="<b>Interpolated Slip </b>", font_family="Arial Blak", 
+                         font_color="black", x=0.5, y=0.85)
+        
+        layout = go.Layout(scene = scene, margin=margin, width=800, height=350, 
+                          title=title)
+        
+        fig = px.scatter_3d(x=self.XF3D, y=self.YF3D, z=self.ZF3D)
+        fig.update_layout(layout)
+        
+        fig.show()
+        
+    
+    
+    # *************************************************************************
+    # *                                                                       *
+    # *                     save files methods section                        *                     
+    # *                                                                       *
+    # *************************************************************************
     def save_fault(self,dir):
-        out_file = dir + self.name + "_dhF" + str(self.dhF*1000) + ".pickle"
-
         print()
+        out_file = dir + self.name + ".pickle"
         object_file = open(out_file, 'wb')
         pickle.dump(self, object_file)
         object_file.close()
@@ -422,7 +478,7 @@ class Fault():
         print()
         # Write .vector file
         fvector_header = "%d" %(self.ntri)
-        fvector = dir + self.name + "_dhF" + str(self.dhF*1000) + ".vector"
+        fvector = dir + self.name + ".vector"
         with open(fvector,'wb') as f:
             np.savetxt(f, self.univector,header=fvector_header, 
                        comments=' ',fmt='%10.6f')
@@ -430,3 +486,21 @@ class Fault():
 
         print(f" vector file saved in: {fvector} ")
         
+    def write_fcoor(self,dir,id,nt,dt):
+        print()
+        # Write fcoor file
+        fcoorHeader = "%d  %d %4.2f " %(self.n_sub_faults, nt, dt)
+
+        fcoorName = dir + self.name + "_ID_" + id +".in"
+
+        with open(fcoorName,'wb') as f:
+            np.savetxt(f, self.fcoor, header=fcoorHeader, comments=' ',fmt = '%9.4f')
+
+        print(f" Coordinates file saved in: {fcoorName} " )
+        print(f" Number of subfaults: {self.n_sub_faults} " )
+        print(f" Number of time steps: {nt} " )
+        print(f" time step: {dt} " )
+        
+        f.close()
+
+               
