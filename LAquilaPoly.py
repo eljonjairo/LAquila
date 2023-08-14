@@ -22,19 +22,39 @@ from pathlib import Path
 import FDealunay
 import math
 
+import pygmt
+import utm
+
 
 warnings.filterwarnings("ignore")
 plt.close('all')
 os.system('clear')
 
-# Name of the Fault file
+# Load Fault Object
 inFault = '../Outputs/3DFaults/LAquilaCirella03_dhF500m.pickle'
 
-# Name of the Topo file
-inTopo = '../Outputs/Topo/Topo_12.5a14.5_41.0a44.0.pickle'
-
 # Output Poly folder
-PolyFolder = Path('../Outputs/PolyFiles')
+PolyFolder = "../Outputs/PolyFiles"
+
+# Lon-Lat limits for Topo Download
+Latmin = 41.0
+Latmax = 44.0
+Lonmin = 12.5
+Lonmax = 14.5
+
+# # X and Y UTM limits (Km) for Model 23 Stations
+# xmin = 300.0
+# xmax = 440.0
+# ymin = 4560.0
+# ymax = 4820.0
+# zmin = -60.0
+
+# X and Y UTM limits (Km) for Model 13 Stations
+xUTM_ini = 300.0
+xUTM_end = 420.0
+yUTM_ini= 4610.0
+yUTM_end = 4750.0
+zmin = -60.0
 
 # Km to m
 m = 1000
@@ -50,16 +70,6 @@ distToFault = 1.0;
 Zlayer = np.array([ 1.5, 4.5, 7.5, 11.0, 14.5, 19.5, 24.5, 29.5, 35.5, 39.5, 43.5, 48.5,
                     53.5, 60.0 ])     # Last is the limit of the Domain
 
-# Domain Limits (Km) 
-# Cirella 2012 13 Stations
-xUTM_ini  = 300.0
-xUTM_end  = 420.0
-yUTM_ini  = 4610.0
-yUTM_end  = 4750.0
-
-# m to Km
-m = 1000
-
 print("  ")
 print(" START PROGRAM ")
 print("  ")
@@ -68,25 +78,46 @@ print("  ")
 with open(inFault, 'rb') as handle:
     Fault = pickle.load(handle)
 
-nstk = Fault['nstk']
-ndip = Fault['ndip']
-XF3D = np.array(Fault['XF3D'])
-YF3D = np.array(Fault['YF3D'])
-ZF3D = np.array(Fault['ZF3D'])
-XF3Dadd = np.array(Fault['XF3Dadd'])
-YF3Dadd = np.array(Fault['YF3Dadd'])
-ZF3Dadd = np.array(Fault['ZF3Dadd'])
-dhFault = Fault['dhF']
 
+# Load Earth relief data for the entire globe and a subset region
+region = [Lonmin,Lonmax,Latmin,Latmax]
+grid = pygmt.datasets.load_earth_relief(resolution="03s", region=region)
 
-# Load the Topo Dict
-with open(inTopo, 'rb') as handle:
-    Topo = pickle.load(handle)
+zTopoMat = grid.data
+TopoLat = grid.lat.data
+TopoLon = grid.lon.data
+
+zmax = np.max(zTopoMat)/m
+
+print()
+print(' Download Topography ...  ')
+
+TopoLonMat, TopoLatMat = np.meshgrid(TopoLon,TopoLat)
+xTopoMat,yTopoMat, tmp1, tmp2 = utm.from_latlon(TopoLatMat, TopoLonMat,33,'N')
+xTopoMat = xTopoMat/m
+yTopoMat = yTopoMat/m
+
+fig = pygmt.Figure()
+pygmt.makecpt(cmap="geo", series=[-10000, 10000])
+fig.grdimage(grid=grid, region=region,
+             frame=['WSrt+t" Topografia Italia Central"', "xa0.4", "ya0.4"])
+fig.colorbar(frame=["xa2000f500+lElevación ", "y+lm"])
+fig.show()
+
+nstk = Fault.nstk
+ndip = Fault.ndip
+XF3D = Fault.XF3D
+YF3D = Fault.YF3D
+ZF3D = Fault.ZF3D
+XF3Dadd = Fault.XF3D_add
+YF3Dadd = Fault.YF3D_add
+ZF3Dadd = Fault.ZF3D_add
+dhFault = Fault.dhF
 
 # Load Topo Coords (Km)
-xTopoin = Topo['xTopoMat'].flatten(order='F').transpose()
-yTopoin = Topo['yTopoMat'].flatten(order='F').transpose()
-zTopoin = Topo['zTopoMat'].flatten(order='F').transpose()
+xTopoin = xTopoMat.flatten(order='F').transpose()
+yTopoin = yTopoMat.flatten(order='F').transpose()
+zTopoin = zTopoMat.flatten(order='F').transpose()
 
 xyTopoin = np.array((xTopoin,yTopoin)).transpose()
 
@@ -103,7 +134,7 @@ xTopoMat, yTopoMat = np.meshgrid(xTopo, yTopo, indexing='xy')
 xTopoVec = xTopoMat.flatten(order='F')
 yTopoVec = yTopoMat.flatten(order='F')
 
-zTopoMat = griddata(xyTopoin, zTopoin, (xTopoMat, yTopoMat), method='cubic')
+zTopoMat = griddata(xyTopoin, zTopoin, (xTopoMat, yTopoMat), method='cubic')/m
 
 fig = plt.figure()
 ax = fig.subplots(1,1)
@@ -154,7 +185,7 @@ for izl in Zlayer:
 print()
 print(" Adding Fault Nodes ")
 
-fcoor = np.array(Fault['fcoor'])
+fcoor = Fault.fcoor
 
 # Remove nodes closer to the fault
 for icoor in fcoor:
@@ -239,92 +270,92 @@ print()
 print(" Borders of Computational Domain, min and max values in x y and z in Km:")
 print(f" {xmin} {xmax} {ymin} {ymax} {zmin} {zmax} ")
 
-print()
-print(" Writing output files...")
+# print()
+# print(" Writing output files...")
 
-outname = Fault['outname']
-# Write var file
-inradiusF = dhFault*1000*math.sqrt(3)/6;   # inradius of triangle assuming it is equilateral
-area = ((inradiusF*math.sqrt(24))**2)*(math.sqrt(3)/4)
-fvar = outname+'.var'
+# outname = Fault['outname']
+# # Write var file
+# inradiusF = dhFault*1000*math.sqrt(3)/6;   # inradius of triangle assuming it is equilateral
+# area = ((inradiusF*math.sqrt(24))**2)*(math.sqrt(3)/4)
+# fvar = outname+'.var'
 
-with open (PolyFolder.joinpath(fvar),'w') as f:
-      f.write("# Facet Constrains \n")
-      f.write("%d \n" %(ntriF))
-      for itri in range(0,ntriF):
-          f.write("%6d %6d %12.3f #Set Maximum area on Facets (1) \n"\
-                  %(itri+1,itri+1,area))
+# with open (PolyFolder.joinpath(fvar),'w') as f:
+#       f.write("# Facet Constrains \n")
+#       f.write("%d \n" %(ntriF))
+#       for itri in range(0,ntriF):
+#           f.write("%6d %6d %12.3f #Set Maximum area on Facets (1) \n"\
+#                   %(itri+1,itri+1,area))
 
-      f.write("# Segment Constraints \n")
+#       f.write("# Segment Constraints \n")
 
-      f.write(" 0 # No Constrains")
-f.close()
-print()
-print(f' {fvar} file created ...')
+#       f.write(" 0 # No Constrains")
+# f.close()
+# print()
+# print(f' {fvar} file created ...')
 
-# Writing Limits for refine procedure (see run folder)
-fLim = outname+'.lim'
-with open (PolyFolder.joinpath(fLim),'w') as f:
-      f.write("Limits of Poly file: xmin xmax ymin ymax zmin zmax in m \n")
-      f.write(' %12.3f %12.3f %12.3f %12.3f %12.3f %12.3f \n' \
-              %(xmin*m,xmax*m,ymin*m,ymax*m,zmin*m,zmax*m))
-f.close()
-print(f' {fLim} file created ...')
+# # Writing Limits for refine procedure (see run folder)
+# fLim = outname+'.lim'
+# with open (PolyFolder.joinpath(fLim),'w') as f:
+#       f.write("Limits of Poly file: xmin xmax ymin ymax zmin zmax in m \n")
+#       f.write(' %12.3f %12.3f %12.3f %12.3f %12.3f %12.3f \n' \
+#               %(xmin*m,xmax*m,ymin*m,ymax*m,zmin*m,zmax*m))
+# f.close()
+# print(f' {fLim} file created ...')
 
-# Writing Poly file
-nx   = Xvector.size
-ntri = int(triGlobal.size/3)
-fPoly = outname+'.poly'
+# # Writing Poly file
+# nx   = Xvector.size
+# ntri = int(triGlobal.size/3)
+# fPoly = outname+'.poly'
 
-with open (PolyFolder.joinpath(fPoly),'w') as f:
-      f.write("# Part 1 - node list \n")
-      f.write("# node count, 3 dim, no attribute, no boundary maker \n")
-      f.write(' %d %d %d %d  \n' %(nx,3,0,0))
-      f.write('# Node index, node coordinates \n')
-      for ix in range(0,nx):
-          f.write(' %6d %12.3f %12.3f %12.3f \n'\
-                  %(ix+1,Xvector[ix]*m,Yvector[ix]*m,Zvector[ix]*m) )
-      f.write('# Part 2 - facet list \n')
-      f.write('# facet count, boundary marker \n')
-      f.write('  %d  %d \n' %(ntri,1))
-      f.write('# Factes \n')
-      for itri in range(0,ntri):
-          f.write(' %3d %3d %3d # 1 polygon, no hole, boundary marker \n' \
-                  %(1,0,triBmarker[itri]))
-          f.write(' %3d %8d %8d %8d \n' \
-                  %(3,triGlobal[itri,0]+1,triGlobal[itri,1]+1,triGlobal[itri,2]+1))
-      f.write('# Part 3 - hole list \n')
-      f.write('0        # no hole \n')
-      f.write('# Part 4 - region list \n')
-      f.write('0        # no region \n')
-f.close()
-print(f' {fPoly} file created ...')
+# with open (PolyFolder.joinpath(fPoly),'w') as f:
+#       f.write("# Part 1 - node list \n")
+#       f.write("# node count, 3 dim, no attribute, no boundary maker \n")
+#       f.write(' %d %d %d %d  \n' %(nx,3,0,0))
+#       f.write('# Node index, node coordinates \n')
+#       for ix in range(0,nx):
+#           f.write(' %6d %12.3f %12.3f %12.3f \n'\
+#                   %(ix+1,Xvector[ix]*m,Yvector[ix]*m,Zvector[ix]*m) )
+#       f.write('# Part 2 - facet list \n')
+#       f.write('# facet count, boundary marker \n')
+#       f.write('  %d  %d \n' %(ntri,1))
+#       f.write('# Factes \n')
+#       for itri in range(0,ntri):
+#           f.write(' %3d %3d %3d # 1 polygon, no hole, boundary marker \n' \
+#                   %(1,0,triBmarker[itri]))
+#           f.write(' %3d %8d %8d %8d \n' \
+#                   %(3,triGlobal[itri,0]+1,triGlobal[itri,1]+1,triGlobal[itri,2]+1))
+#       f.write('# Part 3 - hole list \n')
+#       f.write('0        # no hole \n')
+#       f.write('# Part 4 - region list \n')
+#       f.write('0        # no region \n')
+# f.close()
+# print(f' {fPoly} file created ...')
 
-fig = plt.figure()
-ax = fig.add_subplot(projection='3d')
-ax.scatter(Xvector,Yvector,Zvector, marker ='.')
-ax.set_xlabel(" X (Km)")
-ax.set_ylabel(" Y (Km)")
-ax.set_zlabel(" Z (Km)")
+# fig = plt.figure()
+# ax = fig.add_subplot(projection='3d')
+# ax.scatter(Xvector,Yvector,Zvector, marker ='.')
+# ax.set_xlabel(" X (Km)")
+# ax.set_ylabel(" Y (Km)")
+# ax.set_zlabel(" Z (Km)")
 
 
-fig = plt.figure()
-ax = plt.axes(projection='3d')
-ax.plot_trisurf(Xvector,Yvector,Zvector, triangles=triGlobal)
-ax.azim = -60
-ax.dist = 10
-ax.elev = 10
-ax.set_title("Global")
+# fig = plt.figure()
+# ax = plt.axes(projection='3d')
+# ax.plot_trisurf(Xvector,Yvector,Zvector, triangles=triGlobal)
+# ax.azim = -60
+# ax.dist = 10
+# ax.elev = 10
+# ax.set_title("Global")
 
-fig = plt.figure()
-ax = plt.axes(projection='3d')
-ax.plot_trisurf(Xvector,Yvector,Zvector, triangles=triPlot)
-ax.azim = -60
-ax.dist = 10
-ax.elev = 10
-ax.set_title("Global")
+# fig = plt.figure()
+# ax = plt.axes(projection='3d')
+# ax.plot_trisurf(Xvector,Yvector,Zvector, triangles=triPlot)
+# ax.azim = -60
+# ax.dist = 10
+# ax.elev = 10
+# ax.set_title("Global")
 
-print("  ")
-print(" END PROGRAM ")
-print("  ")
+# print("  ")
+# print(" END PROGRAM ")
+# print("  ")
 

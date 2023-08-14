@@ -50,11 +50,12 @@ if __name__ == '__main__':
     LAquilaFault.compare_xyz_slip()
 
     LAquilaFault.triangulate_fault()
+    LAquilaFault.add_nodes_above_below()
     LAquilaFault.plot_triangulation()
     
-    # plot own triangulation with scatter 3d and then lines
-    #LAquilaFault.write_univector(out_dir)
-    #LAquilaFault.save_fault(out_dir)
+  
+    LAquilaFault.write_univector(out_dir)
+    LAquilaFault.save_fault(out_dir)
 
 
 

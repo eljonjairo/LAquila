@@ -17,6 +17,7 @@ import plotly.express as px
 import plotly.tools as tls
 import plotly.figure_factory as ff
 
+
 import pickle
 
 class Fault():
@@ -108,6 +109,7 @@ class Fault():
               %(stk_len, nstk_in, dstk_in) )
         print(" Dip (Km): %6.2f ndip: %d ddip (Km): %6.2f" 
               %(dip_len, ndip_in, ddip_in) )
+        print(f" Subfaults: {len(self.XFin3D)}")
         
         print(" Hypocenter Coordinates x, y and z (Km): %6.2f %6.2f %6.2f " 
               %(self.hypox, self.hypoy, self.hypoz) )
@@ -172,6 +174,7 @@ class Fault():
         self.ZF3D = ZF3D
         self.n_sub_faults = self.nstk*self.ndip
         self.fcoor = np.array((XF3D,YF3D,ZF3D)).transpose()
+        print(f" Subfaults: {len(self.XF3D)}")
         
     def interpolate_slip(self):
         # Slip Interpolation
@@ -252,10 +255,14 @@ class Fault():
         z_above = self.ZF3D + self.vec_normal[2]*self.dhF
         x_below = self.XF3D - self.vec_normal[0]*self.dhF
         y_below = self.YF3D - self.vec_normal[1]*self.dhF
-        z_below = self.ZF3D - self.vec_normal[3]*self.dhF
-        self.XF3D_add =np.concatenate((x_above, x_below), axis=None)
-        self.YF3D_add =np.concatenate((y_above, y_below), axis=None)
-        self.ZF3D_add =np.concatenate((z_above, z_below), axis=None)
+        z_below = self.ZF3D - self.vec_normal[2]*self.dhF
+        print()
+        print(f" {len(x_above)} nodes added above the fault ")
+        print(f" {len(x_below)} nodes added below the fault ")
+        print()
+        self.XF3D_add = np.concatenate((x_above, x_below), axis=None)
+        self.YF3D_add = np.concatenate((y_above, y_below), axis=None)
+        self.ZF3D_add = np.concatenate((z_above, z_below), axis=None)
      
     # *************************************************************************
     # *                                                                       *
@@ -429,38 +436,41 @@ class Fault():
         fig.show()
     
     def plot_triangulation(self):
-        tickfont = dict(color="black", size=12, family="Arial Black")
+        tickfont = dict(color="black", size=19, family="Arial Black")
       
         camera = dict(up=dict(x=0, y=0, z=1), center=dict(x=0, y=0, z=0),
-                      eye=dict(x=-1.5, y=-2.0, z=1.2))
-        
+                      eye=dict(x=-1.0, y=-1.0, z=0.7))
+        label_z = dict(text="<b>z (Km)</b>", font_family="Arial Blak", 
+                         font_color="black", font_size=26)
         xaxis = dict(title="<b> xUTM (Km) </b>", showgrid=True, gridcolor="white",
-                     showticklabels=True, nticks=6, range=[360,385],
+                     showticklabels=True, nticks=2, range=[360,390],
                      tickfont=tickfont, showbackground=True)
         yaxis = dict(title="<b> yUTM (Km) </b>", showgrid=True, showticklabels=True,
-                     gridcolor="white", nticks=6, range=[4670,4720], 
+                     gridcolor="white", nticks=2, range=[4670,4710], 
                      tickfont=tickfont, showbackground=True)
-        zaxis = dict(title="<b> z (Km) </b>", showgrid=True, showticklabels=True,
-                     gridcolor="white", nticks=6, range=[-18,2], tickfont=tickfont,
+        zaxis = dict(title=label_z, showgrid=True, showticklabels=True,
+                     gridcolor="white", nticks=4, range=[-15,-1], tickfont=tickfont,
                      showbackground=True)
-        margin = dict(r=5, l=5, b=10, t=20)
+        margin = dict(r=10, l=20, b=20, t=20)
         
         scene = dict(camera=camera, xaxis=xaxis, yaxis=yaxis, zaxis=zaxis,
                      aspectmode='cube')
         
-        title = dict(text="<b>Interpolated Slip </b>", font_family="Arial Blak", 
-                         font_color="black", x=0.5, y=0.85)
+        title = dict(text="<b>Fault Triangulation</b>", font_family="Arial Blak", 
+                         font_color="black", font_size=24, x=0.5, y=0.97)
         
-        layout = go.Layout(scene = scene, margin=margin, width=800, height=350, 
-                          title=title)
-        
-        fig = px.scatter_3d(x=self.XF3D, y=self.YF3D, z=self.ZF3D)
+        layout = go.Layout(scene = scene, margin=margin, width=1600, 
+                           height=1200, title=title)
+     
+        fig = ff.create_trisurf(x=self.XF3D, y=self.YF3D, z=self.ZF3D, 
+                                colormap=[(1.0, 1.0, 0.6), (0.95, 0.95, 0.6)],
+                                simplices=self.tri, plot_edges=True)
         fig.update_layout(layout)
-        
-        fig.show()
-        
-    
-    
+        fig.update(layout_coloraxis_showscale=False)
+           
+        fig.show()   
+   
+  
     # *************************************************************************
     # *                                                                       *
     # *                     save files methods section                        *                     
