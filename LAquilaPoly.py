@@ -18,7 +18,7 @@ import matplotlib.pyplot as plt
 from scipy.interpolate import griddata
 from scipy.spatial import Delaunay
 from scipy.spatial import distance
-from pathlib import Path
+
 import FDealunay
 import math
 
@@ -200,9 +200,9 @@ for icoor in fcoor:
 
 print(' Adding Fault Facets')
 # Add Fault nodes triangulation, triBmarker and Fault Nodes   
-triF  = np.array(Fault['tri']) + len(Xvector)
-ntriF = Fault['ntri']
-triBmarkerF = Fault['triBmarker']
+triF  = np.array(Fault.tri) + len(Xvector)
+ntriF = Fault.ntri
+triBmarkerF = Fault.trib_marker
 
 triGlobal = np.concatenate((triGlobal,triF))
 triBmarker = np.concatenate((triBmarker,triBmarkerF))
@@ -270,92 +270,92 @@ print()
 print(" Borders of Computational Domain, min and max values in x y and z in Km:")
 print(f" {xmin} {xmax} {ymin} {ymax} {zmin} {zmax} ")
 
-# print()
-# print(" Writing output files...")
+print()
+print(" Writing output files...")
 
-# outname = Fault['outname']
-# # Write var file
-# inradiusF = dhFault*1000*math.sqrt(3)/6;   # inradius of triangle assuming it is equilateral
-# area = ((inradiusF*math.sqrt(24))**2)*(math.sqrt(3)/4)
-# fvar = outname+'.var'
+outname = Fault.name
+# Write var file
+inradiusF = dhFault*1000*math.sqrt(3)/6;   # inradius of triangle assuming it is equilateral
+area = ((inradiusF*math.sqrt(24))**2)*(math.sqrt(3)/4)
+fvar = outname+'.var'
+PolyFile = PolyFolder+fvar
+with open (PolyFile,'w') as f:
+      f.write("# Facet Constrains \n")
+      f.write("%d \n" %(ntriF))
+      for itri in range(0,ntriF):
+          f.write("%6d %6d %12.3f #Set Maximum area on Facets (1) \n"\
+                  %(itri+1,itri+1,area))
 
-# with open (PolyFolder.joinpath(fvar),'w') as f:
-#       f.write("# Facet Constrains \n")
-#       f.write("%d \n" %(ntriF))
-#       for itri in range(0,ntriF):
-#           f.write("%6d %6d %12.3f #Set Maximum area on Facets (1) \n"\
-#                   %(itri+1,itri+1,area))
+      f.write("# Segment Constraints \n")
 
-#       f.write("# Segment Constraints \n")
+      f.write(" 0 # No Constrains")
+f.close()
+print()
+print(f' {fvar} file created ...')
 
-#       f.write(" 0 # No Constrains")
-# f.close()
-# print()
-# print(f' {fvar} file created ...')
+# Writing Limits for refine procedure (see run folder)
+fLim = PolyFolder+outname+'.lim'
+with open (fLim,'w') as f:
+      f.write("Limits of Poly file: xmin xmax ymin ymax zmin zmax in m \n")
+      f.write(' %12.3f %12.3f %12.3f %12.3f %12.3f %12.3f \n' \
+              %(xmin*m,xmax*m,ymin*m,ymax*m,zmin*m,zmax*m))
+f.close()
+print(f' {fLim} file created ...')
 
-# # Writing Limits for refine procedure (see run folder)
-# fLim = outname+'.lim'
-# with open (PolyFolder.joinpath(fLim),'w') as f:
-#       f.write("Limits of Poly file: xmin xmax ymin ymax zmin zmax in m \n")
-#       f.write(' %12.3f %12.3f %12.3f %12.3f %12.3f %12.3f \n' \
-#               %(xmin*m,xmax*m,ymin*m,ymax*m,zmin*m,zmax*m))
-# f.close()
-# print(f' {fLim} file created ...')
+# Writing Poly file
+nx   = Xvector.size
+ntri = int(triGlobal.size/3)
+fPoly = PolyFolder+outname+'.poly'
 
-# # Writing Poly file
-# nx   = Xvector.size
-# ntri = int(triGlobal.size/3)
-# fPoly = outname+'.poly'
+with open (fPoly,'w') as f:
+      f.write("# Part 1 - node list \n")
+      f.write("# node count, 3 dim, no attribute, no boundary maker \n")
+      f.write(' %d %d %d %d  \n' %(nx,3,0,0))
+      f.write('# Node index, node coordinates \n')
+      for ix in range(0,nx):
+          f.write(' %6d %12.3f %12.3f %12.3f \n'\
+                  %(ix+1,Xvector[ix]*m,Yvector[ix]*m,Zvector[ix]*m) )
+      f.write('# Part 2 - facet list \n')
+      f.write('# facet count, boundary marker \n')
+      f.write('  %d  %d \n' %(ntri,1))
+      f.write('# Factes \n')
+      for itri in range(0,ntri):
+          f.write(' %3d %3d %3d # 1 polygon, no hole, boundary marker \n' \
+                  %(1,0,triBmarker[itri]))
+          f.write(' %3d %8d %8d %8d \n' \
+                  %(3,triGlobal[itri,0]+1,triGlobal[itri,1]+1,triGlobal[itri,2]+1))
+      f.write('# Part 3 - hole list \n')
+      f.write('0        # no hole \n')
+      f.write('# Part 4 - region list \n')
+      f.write('0        # no region \n')
+f.close()
+print(f' {fPoly} file created ...')
 
-# with open (PolyFolder.joinpath(fPoly),'w') as f:
-#       f.write("# Part 1 - node list \n")
-#       f.write("# node count, 3 dim, no attribute, no boundary maker \n")
-#       f.write(' %d %d %d %d  \n' %(nx,3,0,0))
-#       f.write('# Node index, node coordinates \n')
-#       for ix in range(0,nx):
-#           f.write(' %6d %12.3f %12.3f %12.3f \n'\
-#                   %(ix+1,Xvector[ix]*m,Yvector[ix]*m,Zvector[ix]*m) )
-#       f.write('# Part 2 - facet list \n')
-#       f.write('# facet count, boundary marker \n')
-#       f.write('  %d  %d \n' %(ntri,1))
-#       f.write('# Factes \n')
-#       for itri in range(0,ntri):
-#           f.write(' %3d %3d %3d # 1 polygon, no hole, boundary marker \n' \
-#                   %(1,0,triBmarker[itri]))
-#           f.write(' %3d %8d %8d %8d \n' \
-#                   %(3,triGlobal[itri,0]+1,triGlobal[itri,1]+1,triGlobal[itri,2]+1))
-#       f.write('# Part 3 - hole list \n')
-#       f.write('0        # no hole \n')
-#       f.write('# Part 4 - region list \n')
-#       f.write('0        # no region \n')
-# f.close()
-# print(f' {fPoly} file created ...')
-
-# fig = plt.figure()
-# ax = fig.add_subplot(projection='3d')
-# ax.scatter(Xvector,Yvector,Zvector, marker ='.')
-# ax.set_xlabel(" X (Km)")
-# ax.set_ylabel(" Y (Km)")
-# ax.set_zlabel(" Z (Km)")
+fig = plt.figure()
+ax = fig.add_subplot(projection='3d')
+ax.scatter(Xvector,Yvector,Zvector, marker ='.')
+ax.set_xlabel(" X (Km)")
+ax.set_ylabel(" Y (Km)")
+ax.set_zlabel(" Z (Km)")
 
 
-# fig = plt.figure()
-# ax = plt.axes(projection='3d')
-# ax.plot_trisurf(Xvector,Yvector,Zvector, triangles=triGlobal)
-# ax.azim = -60
-# ax.dist = 10
-# ax.elev = 10
-# ax.set_title("Global")
+fig = plt.figure()
+ax = plt.axes(projection='3d')
+ax.plot_trisurf(Xvector,Yvector,Zvector, triangles=triGlobal)
+ax.azim = -60
+ax.dist = 10
+ax.elev = 10
+ax.set_title("Global")
 
-# fig = plt.figure()
-# ax = plt.axes(projection='3d')
-# ax.plot_trisurf(Xvector,Yvector,Zvector, triangles=triPlot)
-# ax.azim = -60
-# ax.dist = 10
-# ax.elev = 10
-# ax.set_title("Global")
+fig = plt.figure()
+ax = plt.axes(projection='3d')
+ax.plot_trisurf(Xvector,Yvector,Zvector, triangles=triPlot)
+ax.azim = -60
+ax.dist = 10
+ax.elev = 10
+ax.set_title("Global")
 
-# print("  ")
-# print(" END PROGRAM ")
-# print("  ")
+print("  ")
+print(" END PROGRAM ")
+print("  ")
 
