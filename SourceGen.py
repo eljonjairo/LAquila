@@ -70,10 +70,10 @@ if __name__ == '__main__':
 
     # Load the Fault Dict
     with open(inFault, 'rb') as handle:
-        Fault = pickle.load(handle)
+        fault_object = pickle.load(handle)
 
-    LAquilaSource = Source.Source(Fault, Mw, asp_size, kc, rake)
-  
+    LAquilaSource = Source.Source(fault_object, Mw, asp_size, kc, rake)
+      
     print(LAquilaSource)
 
     # Velocity Model H(Km),Vp(Km/s),Vs(Km/s) and Rho(Kg/m3) Bianchi, Ameri*
@@ -85,7 +85,8 @@ if __name__ == '__main__':
     LAquilaSource.set_mu_1d(vs, rho, h)
     LAquilaSource.adjust_Mw()
     
-    
+    #LAquilaSource.compare_xyz_slip()    
+    LAquilaSource.compare_slip_contour_2d()
 # nstk = Fault['nstk']
 # ndip = Fault['ndip']
 
