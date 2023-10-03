@@ -13,11 +13,13 @@ from scipy.interpolate import splev, splrep
 
 import plotly.graph_objs as go
 import plotly.io as io
+import plotly.express as px
 
 import plotly.tools as tls
 
 import matplotlib.pyplot as plt
 import Fault
+
 
 class Source():
     def __init__(self, fault_object, Mw, asp_size, kc, rake):
@@ -44,16 +46,46 @@ class Source():
         return source
     
     def effective_size(self):
+        slip = self.SlipMat
         # Cumulative slip in strike and dip direction
-        sum_slip_stk = np.sum(self.slip, axis=0)
-        sum_slip_dip = np.sum(self.slip, axis=1)
+        sum_slip_stk = np.sum(slip, axis=0)
+        sum_slip_dip = np.sum(slip, axis=1)
+    
+        # Calculate the integral, and the effective length following
+        # Source Scaling Properties from Finite-Fault-Rupture Models (Mai & Beroza 2000)
+        acorr_stk = np.correlate(sum_slip_stk, sum_slip_stk, mode = 'full')
+        x_stk = np.arange(0, len(acorr_stk), 1, dtype=int)*self.dhF
+        Wacf_stk = integrate.simpson(acorr_stk, x_stk)/max(acorr_stk)
+      
+        acorr_dip = np.correlate(sum_slip_dip,sum_slip_dip, mode = 'full')
+        x_dip = np.arange(0, len(acorr_dip), 1, dtype=int)*self.dhF
+        Wacf_dip = integrate.simpson(acorr_dip, x_dip)/max(acorr_dip)
+     
+        print()
+        print(" Effective length in strike direction: %5.2f Km." % (Wacf_stk) )
+        print(" Effective length in dip direction: %5.2f Km." % (Wacf_dip) )
+  
+        # Calculate effective number of nodes
+        nstk_eff = int(Wacf_stk//self.dhF)+1
+        ndip_eff = int(Wacf_dip//self.dhF)+1
         
-        acorr_stk = sm.tsa.acf(sum_slip_stk, nlags = len(sum_slip_stk)-1)
-        acorr_dip = sm.tsa.acf(sum_slip_dip, nlags = len(sum_slip_dip)-1)
-        
-        Wacf_stk = integrate.simpson(acorr_stk, self.stk)/max(acorr_stk)
-        Wacf_dip = integrate.simpson(acorr_dip, self.dip)/max(acorr_dip)
-        
+        istk = 0
+        jstk = nstk_eff
+        print(istk)
+        print(jstk)
+        sum_slip_eff = np.sum(np.sum(slip[:,istk:jstk], axis=0))
+        while( jstk <= self.nstk +1 ):
+            istk+=1
+            jstk+=1
+            # verificar el límite de jstk
+            sum_slip_tmp = np.sum(np.sum(slip[:,istk:jstk], axis=0))
+            print(f" i: {istk} j: {jstk} sum: {sum_slip_tmp} " )
+            if ( sum_slip_tmp > sum_slip_eff ):
+                istk_eff = istk
+                sum_slip_eff = sum_slip_tmp
+    
+        print(istk_eff)
+  
         pass
         
     
@@ -77,26 +109,30 @@ class Source():
         M0_target = pow(10,(self.target_Mw+10.75)/1.5)
    
         moment = 0
-        slip =self.SlipMat.flatten(order='F')
-        area =pow(self.dhF*1000,2)
+        slip = self.SlipMat.flatten(order='F')
+        area = pow(self.dhF*1000,2)
         
+        slip_umbral = 0.05*np.mean(slip)
+      
         for iz in range(self.mu.size):
-           moment += area*slip[iz]*self.mu[iz]
+            if (slip[iz] > slip_umbral):
+                moment += area*slip[iz]*self.mu[iz]
             
         moment = moment*1e-7   # from N-m to dyn-cm    
         self.original_Mw = -10.75 + 1.5*log10(moment)
-        print(f" Original Mw: %5.2f" % (self.original_Mw))
+        print(" Original Mw: %5.2f" % (self.original_Mw))
         
         self.adjust_slip = self.SlipMat*M0_target/moment
         slip = self.adjust_slip.flatten(order='F')
         
         for iz in range(self.mu.size):
-           moment += area*slip[iz]*self.mu[iz]
+            if (slip[iz] > slip_umbral):
+                moment += area*slip[iz]*self.mu[iz]
             
         moment = moment*1e-7   # from N-m to dyn-cm   
         self.adjust_Mw = -10.75 + 1.5*log10(moment)
         
-        print(f" Adjusted Mw: %5.2f" % (self.adjust_Mw))
+        print(" Adjusted Mw: %5.2f" % (self.adjust_Mw))
         
     def compare_xyz_slip(self):
         io.renderers.default='svg'
@@ -185,7 +221,31 @@ class Source():
       
         fig.show()
         
-    def low_wavenumber_scenerio(self):
+        
+    def original_slip_psd(self):
+    
+        # Taking the fourier transform centered at the origin
+        slip_fft = np.fft.fft2(self.adjust_slip)
+        slip_fft_shift = np.fft.fftshift(slip_fft)
+        # Get power spectral density
+        slip_psd_amplitude = np.abs(slip_fft)**2
+        slip_shift_psd_amplitude = np.abs(slip_fft_shift)**2
+        slip_psd_amplitude_log = np.log(slip_psd_amplitude)
+        slip_shift_psd_amplitude_log = np.log(slip_shift_psd_amplitude)
+        self.npad = 512
+        # Prepare wavenumbers centered at the origin
+        kstk = (2*np.pi/(self.npad*self.dhF))*np.arange(-self.npad//2,self.npad//2-1, 1.)
+        kdip = (2*np.pi/(self.npad*self.dhF))*np.arange(-self.npad//2, self.npad//2-1, 1.)
+        kave = 0.5 * (kstk[1:] + kdip[:-1])
+        
+        fig = go.Figure(data=go.Heatmap( z=slip_shift_psd_amplitude_log, x=kstk,
+                                        y=kdip,hoverongaps = False, showscale=True))
+        #fig = px.scatter(slip_psd_log, log_x=True)
+        fig.show()
+        pass
+    
+    def low_wavenumber_scenario(self):
+        npad = 512
         
         pass
         

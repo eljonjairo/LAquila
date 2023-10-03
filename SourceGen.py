@@ -85,8 +85,11 @@ if __name__ == '__main__':
     LAquilaSource.set_mu_1d(vs, rho, h)
     LAquilaSource.adjust_Mw()
     
+    LAquilaSource.effective_size()
+
     #LAquilaSource.compare_xyz_slip()    
     LAquilaSource.compare_slip_contour_2d()
+    #LAquilaSource.original_slip_psd()
 # nstk = Fault['nstk']
 # ndip = Fault['ndip']
 
