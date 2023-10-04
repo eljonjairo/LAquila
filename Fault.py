@@ -23,7 +23,7 @@ import pickle
 class Fault():
     def __init__(self,name, dhF):
         self.dhF = dhF
-        self.name = name + "_dhF" + str(int(self.dhF*1000)) + "m"
+        self.name = name + "_dhF" + str(int(self.dhF)) + "m"
 
     def __str__(self):
         return " Fault name: " + str(self.name) + " dhF: " + str(self.dhF) + " Km" 
@@ -47,15 +47,15 @@ class Fault():
         self.RupTinMat  = Fault['timeSPL'][0][0]        # Input rupture time (s)
    
         # Hypocenter coordinates (Km) 
-        self.hypolon = Fault['evLON'][0][0][0][0]   # Hypocenter lon coord (°)
-        self.hypolat = Fault['evLAT'][0][0][0][0]   # Hypocenter lat coord (°)
-        self.hypoz = -Fault['evDPT'][0][0][0][0]    # Hypocenter lon coord (Km)
+        self.hypolon = Fault['evLON'][0][0][0][0]     # Hypocenter lon coord (°)
+        self.hypolat = Fault['evLAT'][0][0][0][0]     # Hypocenter lat coord (°)
+        self.hypoz = -Fault['evDPT'][0][0][0][0]*1000 # Hypocenter lon coord (m)
    
         # Hypocenter Xutm, Yutm coord (Km)
         self.hypox, self.hypoy, tmp1, tmp2 = utm.from_latlon(self.hypolat, 
                                                         self.hypolon,33,'T')
-        self.hypox = self.hypox/1000
-        self.hypoy = self.hypoy/1000 
+        self.hypox = self.hypox
+        self.hypoy = self.hypoy 
    
         # Xutm, Yutm coord Km
         self.XFinMat, self.YFinMat, tmp1, tmp2 = \
@@ -76,9 +76,7 @@ class Fault():
         # Calculate length and output number of points in strike an dip direction        
         self.stk_len_in = round((self.nstk_in-1)*self.dstk_in)
         self.dip_len_in = round((self.ndip_in-1)*self.ddip_in)
-       
-    
-   
+          
         print(" Original Fault Dimensions:")
         print(" Strike (Km): %6.3f nstk: %d dstk (Km): %6.3f " 
               %(self.stk_len_in/1000, self.nstk_in, self.dstk_in/1000) )
@@ -161,13 +159,12 @@ class Fault():
         x_dip = np.arange(0, len(acorr_dip), 1, dtype=int)*self.ddip_in
         Wacf_dip = scipy.integrate.simpson(acorr_dip, x_dip)/max(acorr_dip)
         
-        print()
         print(" Effective length in strike direction: %5.2f Km." % (Wacf_stk) )
         print(" Effective length in dip direction: %5.2f Km." % (Wacf_dip) )
      
         # Calculate effective number of nodes
-        nstk_eff = int(Wacf_stk//self.dstk_in)+1
-        ndip_eff = int(Wacf_dip//self.ddip_in)+1
+        nstk_eff = round(Wacf_stk/self.dstk_in)+1
+        ndip_eff = round(Wacf_dip/self.ddip_in)+1
            
         # Select the interval with length Leff in the strike dir which
         # maximize the slip sum
@@ -403,14 +400,15 @@ class Fault():
             v1 = np.array([ self.XF3D[iv1], self.YF3D[iv1], self.ZF3D[iv1]])
             v2 = np.array([ self.XF3D[iv2], self.YF3D[iv2], self.ZF3D[iv2]])
             self.vec_normal = np.cross(v1-v0,v2-v0)
+            self.vec_normal = self.vec_normal/np.linalg.norm(self.vec_normal)
             self.vec_strike = np.cross(self.vec_normal,nsurf)
+            self.vec_strike = self.vec_strike/np.linalg.norm(self.vec_strike)
             self.vec_dip = np.cross(self.vec_strike,self.vec_normal)
-            self.univector[itri,0:3] \
-            = self.vec_normal/np.linalg.norm(self.vec_normal)
-            self.univector[itri,3:6] \
-            = self.vec_strike/np.linalg.norm(self.vec_strike)
-            self.univector[itri,6:9] \
-            = self.vec_dip/np.linalg.norm(self.vec_dip)
+            self.vec_dip = self.vec_dip/np.linalg.norm(self.vec_dip)
+            
+            self.univector[itri,0:3] = self.vec_normal
+            self.univector[itri,3:6] = self.vec_strike
+            self.univector[itri,6:9] = self.vec_dip
 
     def add_nodes_above_below(self):
     # Add nodes above an below to the fault
@@ -479,7 +477,7 @@ class Fault():
         colorbar=dict(lenmode='fraction', len=0.75, thickness=20, bordercolor="black",
                       title="<b> slip(m) </b>", x=0.2)
         
-        data = [go.Surface(x=self.XFMat, y=self.YFMat, z=self.ZFMat, 
+        data = [go.Surface(x=self.XFMat/1000, y=self.YFMat/1000, z=self.ZFMat/1000, 
                           surfacecolor=self.SlipMat,
                           colorscale=px.colors.sequential.Viridis, colorbar=colorbar, showscale=True,
                           lighting=dict(ambient=0.7))]
@@ -519,7 +517,7 @@ class Fault():
         colorbar=dict(lenmode='fraction', len=0.75, thickness=20, bordercolor="black",
                           title="<b> slip(m) </b>", x=0.2)
             
-        data = [go.Surface(x=self.XFMat, y=self.YFMat, z=self.ZFMat, 
+        data = [go.Surface(x=self.XFMat/1000, y=self.YFMat/1000, z=self.ZFMat/1000, 
                           surfacecolor=self.SlipMat,
                           colorscale="Viridis", colorbar=colorbar, showscale=True,
                           lighting=dict(ambient=0.7))]
@@ -559,12 +557,12 @@ class Fault():
         colorbar=dict(lenmode='fraction', len=0.9, thickness=10, 
                       bordercolor="black", title="<b> slip(m) </b>")
         
-        data_a = go.Surface(x=self.XFinMat, y=self.YFinMat, z=self.ZFinMat, 
+        data_a = go.Surface(x=self.XFinMat/1000, y=self.YFinMat/1000, z=self.ZFinMat/1000, 
                             surfacecolor=self.SlipinMat,
                             colorbar=colorbar, 
                             showscale=False, lighting=dict(ambient=0.9))
            
-        data_b = go.Surface(x=self.XFMat, y=self.YFMat, z=self.ZFMat, 
+        data_b = go.Surface(x=self.XFMat/1000, y=self.YFMat/1000, z=self.ZFMat/1000, 
                             surfacecolor=self.SlipMat, colorbar=colorbar,
                             showscale=True, lighting=dict(ambient=0.9))
         
@@ -625,7 +623,7 @@ class Fault():
         layout = go.Layout(scene = scene, margin=margin, width=1600, 
                            height=1200, title=title)
      
-        fig = ff.create_trisurf(x=self.XF3D, y=self.YF3D, z=self.ZF3D, 
+        fig = ff.create_trisurf(x=self.XF3D/1000, y=self.YF3D/1000, z=self.ZF3D/1000, 
                                 colormap=[(1.0, 1.0, 0.6), (0.95, 0.95, 0.6)],
                                 simplices=self.tri, plot_edges=True)
         fig.update_layout(layout)

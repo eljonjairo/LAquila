@@ -82,7 +82,6 @@ if __name__ == '__main__':
     vs =  np.array([ 1.70, 2.60, 3.10, 3.50, 3.80, 4.20 ])
     rho = np.array([ 2500, 2840, 2940, 3150, 3260, 3500 ])
     
-    LAquilaSource.effective_size()
     LAquilaSource.set_mu_1d(vs, rho, h)
     LAquilaSource.adjust_Mw()
     #LAquilaSource.compare_xyz_slip()    

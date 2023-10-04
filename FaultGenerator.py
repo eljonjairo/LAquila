@@ -11,13 +11,15 @@
 import warnings
 import Fault
 
+import plotly.express as px
+
 import plotly.io as io
 io.renderers.default='svg'
+
 if __name__ == '__main__':
 
     warnings.filterwarnings("ignore")
  
-    
     print()
     print(" ************************************************ ")
     print(" *        Starting Generate Fault Program       * ")
@@ -25,7 +27,7 @@ if __name__ == '__main__':
     print()
 
     # Fault Name
-    name = 'LAquilaCirella03'
+    name = 'LAquilaCirella03_eff'
 
     # Output dir for topo file
     out_dir = '../Outputs/3DFaults/'
@@ -46,17 +48,23 @@ if __name__ == '__main__':
     LAquilaFault.interpolate_rise_time()
     LAquilaFault.interpolate_rupt_time()
   
-   # LAquilaFault.plot_xyz_slip()
-   # LAquilaFault.plot_xyz_model_slip()
+    LAquilaFault.plot_xyz_slip()
+    LAquilaFault.plot_xyz_model_slip()
     LAquilaFault.compare_xyz_slip()
-
-    #LAquilaFault.triangulate_fault()
-    #LAquilaFault.add_nodes_above_below()
-    #LAquilaFault.plot_triangulation()
     
+    # df = px.data.tips()
+    # fig = px.scatter(df, x="total_bill", y="tip", color="size",
+    #              title="Numeric 'size' values mean continuous color")
+
+    # fig.show()
+    
+    LAquilaFault.triangulate_fault()
+    LAquilaFault.add_nodes_above_below()
+    LAquilaFault.plot_triangulation()
   
-    #LAquilaFault.write_univector(out_dir)
-    #LAquilaFault.save_fault(out_dir)
+    LAquilaFault.write_univector(out_dir)
+
+    LAquilaFault.save_fault(out_dir)
 
 
 

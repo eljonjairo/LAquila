@@ -31,10 +31,10 @@ plt.close('all')
 os.system('clear')
 
 # Load Fault Object
-inFault = '../Outputs/3DFaults/LAquilaCirella03_dhF500m.pickle'
+inFault = '../Outputs/3DFaults/LAquilaCirella03_eff_dhF500m.pickle'
 
 # Output Poly folder
-PolyFolder = "../Outputs/PolyFiles"
+PolyFolder = "../Outputs/PolyFiles/"
 
 # Lon-Lat limits for Topo Download
 Latmin = 41.0
@@ -49,26 +49,25 @@ Lonmax = 14.5
 # ymax = 4820.0
 # zmin = -60.0
 
-# X and Y UTM limits (Km) for Model 13 Stations
-xUTM_ini = 300.0
-xUTM_end = 420.0
-yUTM_ini= 4610.0
-yUTM_end = 4750.0
-zmin = -60.0
+# X and Y UTM limits (m) for Model 13 Stations
+xUTM_ini = 300000.0
+xUTM_end = 420000.0
+yUTM_ini= 4610000.0
+yUTM_end = 4750000.0
+zmin = -60000.0
 
-# Km to m
-m = 1000
-#Horizontal and Topography steps (Km)
-dh = 4;
-dhTopo = 0.5;
+#Horizontal and Topography steps (m)
+dh = 4000;
+dhTopo = 500;
 
 # Distance to remove points close to the fault (m)
-distToFault = 1.0;
+distToFault = 1000.0;
 
-#Z Coordinates of Velocity Model Layers (Km) (no much bigger than dh)
+#Z Coordinates of Velocity Model Layers (m) (no much bigger than dh)
 # Herrmann Velocity layers in z: 1.5, 4.5, 7.5, 14.5, 29.5, 35.5, 43.5 
-Zlayer = np.array([ 1.5, 4.5, 7.5, 11.0, 14.5, 19.5, 24.5, 29.5, 35.5, 39.5, 43.5, 48.5,
-                    53.5, 60.0 ])     # Last is the limit of the Domain
+Zlayer = np.array([ 1500, 4500, 7500, 11000, 14500, 19500, 24500, 29500, 35500,
+                    39500, 43500, 48500, 53500, 60000 ])
+                    # Last is the limit of the Domain
 
 print("  ")
 print(" START PROGRAM ")
@@ -78,7 +77,6 @@ print("  ")
 with open(inFault, 'rb') as handle:
     Fault = pickle.load(handle)
 
-
 # Load Earth relief data for the entire globe and a subset region
 region = [Lonmin,Lonmax,Latmin,Latmax]
 grid = pygmt.datasets.load_earth_relief(resolution="03s", region=region)
@@ -87,15 +85,15 @@ zTopoMat = grid.data
 TopoLat = grid.lat.data
 TopoLon = grid.lon.data
 
-zmax = np.max(zTopoMat)/m
+zmax = np.max(zTopoMat)
 
 print()
 print(' Download Topography ...  ')
 
 TopoLonMat, TopoLatMat = np.meshgrid(TopoLon,TopoLat)
 xTopoMat,yTopoMat, tmp1, tmp2 = utm.from_latlon(TopoLatMat, TopoLonMat,33,'N')
-xTopoMat = xTopoMat/m
-yTopoMat = yTopoMat/m
+xTopoMat = xTopoMat
+yTopoMat = yTopoMat
 
 fig = pygmt.Figure()
 pygmt.makecpt(cmap="geo", series=[-10000, 10000])
@@ -134,11 +132,11 @@ xTopoMat, yTopoMat = np.meshgrid(xTopo, yTopo, indexing='xy')
 xTopoVec = xTopoMat.flatten(order='F')
 yTopoVec = yTopoMat.flatten(order='F')
 
-zTopoMat = griddata(xyTopoin, zTopoin, (xTopoMat, yTopoMat), method='cubic')/m
+zTopoMat = griddata(xyTopoin, zTopoin, (xTopoMat, yTopoMat), method='cubic')
 
 fig = plt.figure()
 ax = fig.subplots(1,1)
-mp=ax.pcolormesh(xTopoMat,yTopoMat,zTopoMat, cmap='terrain',vmin=-1,vmax=4)
+mp=ax.pcolormesh(xTopoMat/1000,yTopoMat/1000,zTopoMat/1000, cmap='terrain',vmin=-1,vmax=4)
 plt.colorbar(mp,location='bottom',label="Elevación (m)",shrink=.6)
 ax.set_aspect('equal',adjustable='box')
 ax.set_title('Topografía Italia Central')
@@ -176,7 +174,7 @@ yLayerVec = yMat.flatten(order='F')
 
 print(" Horizontal Layers at z: ")
 for izl in Zlayer:
-    print(f" {izl} Km." )
+    print(f" {izl} m." )
     zLayerVec = -np.ones(xLayerVec.size)*izl
     Xvector = np.append(Xvector,xLayerVec)
     Yvector = np.append(Yvector,yLayerVec)
@@ -229,6 +227,9 @@ ymax = max(Yvector)
 zmin = min(Zvector)
 zmax = max(Zvector)
 
+
+print(f" {xmin} {xmax} {ymin} {ymax} {zmin} {zmax} ")
+
 # Facets of the west boundary nodes
 triW = FDealunay.Facetx(Xvector,Yvector,Zvector,xmin)
 triGlobal = np.concatenate((triGlobal,triW))
@@ -275,7 +276,7 @@ print(" Writing output files...")
 
 outname = Fault.name
 # Write var file
-inradiusF = dhFault*1000*math.sqrt(3)/6;   # inradius of triangle assuming it is equilateral
+inradiusF = dhFault*math.sqrt(3)/6;   # inradius of triangle assuming it is equilateral
 area = ((inradiusF*math.sqrt(24))**2)*(math.sqrt(3)/4)
 fvar = outname+'.var'
 PolyFile = PolyFolder+fvar
@@ -298,7 +299,7 @@ fLim = PolyFolder+outname+'.lim'
 with open (fLim,'w') as f:
       f.write("Limits of Poly file: xmin xmax ymin ymax zmin zmax in m \n")
       f.write(' %12.3f %12.3f %12.3f %12.3f %12.3f %12.3f \n' \
-              %(xmin*m,xmax*m,ymin*m,ymax*m,zmin*m,zmax*m))
+              %(xmin,xmax,ymin,ymax,zmin,zmax))
 f.close()
 print(f' {fLim} file created ...')
 
@@ -314,7 +315,7 @@ with open (fPoly,'w') as f:
       f.write('# Node index, node coordinates \n')
       for ix in range(0,nx):
           f.write(' %6d %12.3f %12.3f %12.3f \n'\
-                  %(ix+1,Xvector[ix]*m,Yvector[ix]*m,Zvector[ix]*m) )
+                  %(ix+1,Xvector[ix],Yvector[ix],Zvector[ix]) )
       f.write('# Part 2 - facet list \n')
       f.write('# facet count, boundary marker \n')
       f.write('  %d  %d \n' %(ntri,1))
