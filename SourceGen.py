@@ -81,12 +81,10 @@ if __name__ == '__main__':
     vp =  np.array([ 3.16, 4.83, 5.76, 6.51, 7.00, 7.80 ])
     vs =  np.array([ 1.70, 2.60, 3.10, 3.50, 3.80, 4.20 ])
     rho = np.array([ 2500, 2840, 2940, 3150, 3260, 3500 ])
-
-    LAquilaSource.set_mu_1d(vs, rho, h)
-    LAquilaSource.adjust_Mw()
     
     LAquilaSource.effective_size()
-
+    LAquilaSource.set_mu_1d(vs, rho, h)
+    LAquilaSource.adjust_Mw()
     #LAquilaSource.compare_xyz_slip()    
     LAquilaSource.compare_slip_contour_2d()
     #LAquilaSource.original_slip_psd()

@@ -38,19 +38,63 @@ class Fault():
         Fault = inFault['s2009LAQUIL03CIRE']
         
         # Load original fault coordinates, slip, rise time and rupture time
-        self.ZFinMat = -Fault['geoZ'][0][0]            # Input Z coord (Km)  
-        self.LatFinMat = Fault['geoLAT'][0][0]         # Input Lat coord (°)
-        self.LonFinMat = Fault['geoLON'][0][0]         # Input Lon coord (°)
-        ndip_in, nstk_in = self.ZFinMat.shape          # Input ndip, nstk
-        self.SlipinMat  = Fault['slipSPL'][0][0]/100   # Input Slip in meters.
-        self.RiseTinMat = Fault['riseSPL'][0][0]       # Input risetime (s)
-        self.RupTinMat  = Fault['timeSPL'][0][0]       # Input rupture time (s)
-        
+        self.ZFinMat = -Fault['geoZ'][0][0]*1000        # Input Z coord (m)  
+        self.LatFinMat = Fault['geoLAT'][0][0]          # Input Lat coord (°)
+        self.LonFinMat = Fault['geoLON'][0][0]          # Input Lon coord (°)
+        self.ndip_in, self.nstk_in = self.ZFinMat.shape # Input ndip, nstk
+        self.SlipinMat  = Fault['slipSPL'][0][0]/100    # Input Slip in meters.
+        self.RiseTinMat = Fault['riseSPL'][0][0]        # Input risetime (s)
+        self.RupTinMat  = Fault['timeSPL'][0][0]        # Input rupture time (s)
+   
+        # Hypocenter coordinates (Km) 
+        self.hypolon = Fault['evLON'][0][0][0][0]   # Hypocenter lon coord (°)
+        self.hypolat = Fault['evLAT'][0][0][0][0]   # Hypocenter lat coord (°)
+        self.hypoz = -Fault['evDPT'][0][0][0][0]    # Hypocenter lon coord (Km)
+   
+        # Hypocenter Xutm, Yutm coord (Km)
+        self.hypox, self.hypoy, tmp1, tmp2 = utm.from_latlon(self.hypolat, 
+                                                        self.hypolon,33,'T')
+        self.hypox = self.hypox/1000
+        self.hypoy = self.hypoy/1000 
+   
         # Xutm, Yutm coord Km
         self.XFinMat, self.YFinMat, tmp1, tmp2 = \
         utm.from_latlon(self.LatFinMat, self.LonFinMat,33,'T')
-        self.XFinMat = self.XFinMat/1000
-        self.YFinMat = self.YFinMat/1000
+        
+        # Calculate magnitude and unitary vector of delta in strike direction 
+        vec_dstk = np.array([ self.XFinMat[0,1]-self.XFinMat[0,0], 
+                              self.YFinMat[0,1]-self.YFinMat[0,0],
+                              self.ZFinMat[0,1]-self.ZFinMat[0,0] ])
+        self.dstk_in = np.linalg.norm(vec_dstk)
+        
+        # Calculate magnitude and unitary vector of delta in dip direction 
+        vec_ddip = np.array([ self.XFinMat[1,0]-self.XFinMat[0,0], 
+                              self.YFinMat[1,0]-self.YFinMat[0,0],
+                              self.ZFinMat[1,0]-self.ZFinMat[0,0] ])
+        self.ddip_in = np.linalg.norm(vec_ddip)
+        
+        # Calculate length and output number of points in strike an dip direction        
+        self.stk_len_in = round((self.nstk_in-1)*self.dstk_in)
+        self.dip_len_in = round((self.ndip_in-1)*self.ddip_in)
+       
+    
+   
+        print(" Original Fault Dimensions:")
+        print(" Strike (Km): %6.3f nstk: %d dstk (Km): %6.3f " 
+              %(self.stk_len_in/1000, self.nstk_in, self.dstk_in/1000) )
+        print(" Dip (Km): %6.3f ndip: %d ddip (Km): %6.3f" 
+              %(self.dip_len_in/1000, self.ndip_in, self.ddip_in/1000) )
+        print(f" Subfaults: {len(self.ZFinMat.flatten(order='F'))}")
+    
+        print(" Hypocenter Coordinates x, y and z (Km): %6.3f %6.3f %6.3f " 
+              %(self.hypox, self.hypoy, self.hypoz) )
+        print()     
+   
+    def set_full_fault(self):   
+         
+        # Xutm, Yutm coord Km
+        self.XFinMat, self.YFinMat, tmp1, tmp2 = \
+        utm.from_latlon(self.LatFinMat, self.LonFinMat,33,'T')
         self.XFin3D = self.XFinMat.flatten(order='F').transpose()
         self.YFin3D = self.YFinMat.flatten(order='F').transpose()
         self.ZFin3D = self.ZFinMat.flatten(order='F').transpose()
@@ -58,16 +102,6 @@ class Fault():
         self.RiseTin3D = self.RiseTinMat.flatten(order='F').transpose()
         self.RupTin3D = self.RiseTinMat.flatten(order='F').transpose()
         
-        # Hypocenter coordinates (Km) 
-        self.hypolon = Fault['evLON'][0][0][0][0]   # Hypocenter lon coord (°)
-        self.hypolat = Fault['evLAT'][0][0][0][0]   # Hypocenter lat coord (°)
-        self.hypoz = -Fault['evDPT'][0][0][0][0]    # Hypocenter lon coord (Km)
-        
-        # Hypocenter Xutm, Yutm coord (Km)
-        self.hypox, self.hypoy, tmp1, tmp2 = utm.from_latlon(self.hypolat, 
-                                                             self.hypolon,33,'T')
-        self.hypox = self.hypox/1000
-        self.hypoy = self.hypoy/1000
         
         # Calculate magnitude and unitary vector of delta in strike direction 
         vec_dstk = np.array([ self.XFinMat[0,1]-self.XFinMat[0,0], 
@@ -89,37 +123,167 @@ class Fault():
         self.dstk = np.linalg.norm(self.dstkVec)
         self.ddip = np.linalg.norm(self.ddipVec)
 
-        # Calculate length and output number of points in strike an dip direction        
-        stk_len = round((nstk_in-1)*dstk_in)
-        dip_len = round((ndip_in-1)*ddip_in)
-        self.nstk = int(stk_len/self.dhF)+1
-        self.ndip = int(dip_len/self.dhF)+1
+        # Calculate output fault's size
+        self.nstk = int(self.stk_len_in/self.dhF)+1
+        self.ndip = int(self.dip_len_in/self.dhF)+1
         
         # Define input and output strike and dip vectors
-        self.dipinVec = np.linspace(0, dip_len, ndip_in)
-        self.stkinVec = np.linspace(0, stk_len, nstk_in)
-        self.stkVec = np.linspace(0, stk_len, self.nstk)
-        self.dipVec = np.linspace(0, dip_len, self.ndip)
+        self.dipinVec = np.linspace(0, self.dip_len_in, self.ndip_in)
+        self.stkinVec = np.linspace(0, self.stk_len_in, self.nstk_in)
+        self.stkVec = np.linspace(0, self.stk_len_in, self.nstk)
+        self.dipVec = np.linspace(0, self.dip_len_in, self.ndip)
         
         stk_len = round((self.nstk-1)*self.dstk)
         dip_len = round((self.ndip-1)*self.ddip)
-
-        print(" Original Fault Dimensions:")
-        print(" Strike (Km): %6.2f nstk: %d dstk (Km): %6.2f " 
-              %(stk_len, nstk_in, dstk_in) )
-        print(" Dip (Km): %6.2f ndip: %d ddip (Km): %6.2f" 
-              %(dip_len, ndip_in, ddip_in) )
-        print(f" Subfaults: {len(self.XFin3D)}")
-        
-        print(" Hypocenter Coordinates x, y and z (Km): %6.2f %6.2f %6.2f " 
-              %(self.hypox, self.hypoy, self.hypoz) )
-        print()
+       
         print(" Output Fault Dimensions:")
         print(" Strike (Km): %6.2f nstk: %d dstk (Km): %6.2f " 
-              %(stk_len, self.nstk, self.dstk) )
+              %(stk_len/1000, self.nstk, self.dstk/1000) )
         print(" Dip (Km): %6.2f ndip: %d ddip (Km): %6.2f" 
-              %(dip_len, self.ndip, self.ddip) )
+              %(dip_len/1000, self.ndip, self.ddip/1000) )
+      
+        
+    def effective_size(self):
+        
+        slip = self.SlipinMat
        
+        # Cumulative slip in strike and dip direction
+        sum_slip_stk = np.sum(slip, axis=0)
+        sum_slip_dip = np.sum(slip, axis=1)
+       
+        # Calculate the integral, and the effective length following
+        # Source Scaling Properties from Finite-Fault-Rupture Models (Mai & Beroza 2000)
+        acorr_stk = np.correlate(sum_slip_stk, sum_slip_stk, mode = 'full')
+        x_stk = np.arange(0, len(acorr_stk), 1, dtype=int)*self.dstk_in
+        Wacf_stk = scipy.integrate.simpson(acorr_stk, x_stk)/max(acorr_stk)
+         
+        acorr_dip = np.correlate(sum_slip_dip,sum_slip_dip, mode = 'full')
+        x_dip = np.arange(0, len(acorr_dip), 1, dtype=int)*self.ddip_in
+        Wacf_dip = scipy.integrate.simpson(acorr_dip, x_dip)/max(acorr_dip)
+        
+        print()
+        print(" Effective length in strike direction: %5.2f Km." % (Wacf_stk) )
+        print(" Effective length in dip direction: %5.2f Km." % (Wacf_dip) )
+     
+        # Calculate effective number of nodes
+        nstk_eff = int(Wacf_stk//self.dstk_in)+1
+        ndip_eff = int(Wacf_dip//self.ddip_in)+1
+           
+        # Select the interval with length Leff in the strike dir which
+        # maximize the slip sum
+        istk = 0
+        jstk = nstk_eff
+        istk_eff = istk
+        sum_slip_eff = np.sum(sum_slip_stk[istk:jstk])
+        while( jstk < self.nstk_in ):
+             istk+=1
+             jstk+=1
+             sum_slip_tmp = np.sum(sum_slip_stk[istk:jstk])
+             if ( sum_slip_tmp > sum_slip_eff ):
+                   istk_eff = istk
+                   sum_slip_eff = sum_slip_tmp
+      
+        # Select the interval with length Leff in the dip dir which
+        # maximize the slip sum
+        idip = 0
+        jdip = ndip_eff
+           
+        idip_eff = idip
+        sum_slip_eff = np.sum(sum_slip_dip[idip:jdip])
+        while( jdip < self.ndip_in):
+               idip+=1
+               jdip+=1
+               print(jdip)
+               sum_slip_tmp = np.sum(sum_slip_dip[idip:jdip])
+               if ( sum_slip_tmp > sum_slip_eff ):
+                   idip_eff = idip
+                   sum_slip_eff = sum_slip_tmp
+           
+        slip_eff = slip[idip_eff:idip_eff+ndip_eff, istk_eff:istk_eff+nstk_eff]
+        print()
+        print( f" Original slip matrix dimensions: {slip.shape} ")
+        print( f" Effective slip matrix dimensions: {slip_eff.shape} ")
+        print()
+        return np.array([idip_eff,idip_eff+ndip_eff,istk_eff,istk_eff+nstk_eff])
+       
+    def set_effective_fault(self):   
+               
+        # Xutm, Yutm coord Km
+        self.XFinMat, self.YFinMat, tmp1, tmp2 = \
+        utm.from_latlon(self.LatFinMat, self.LonFinMat,33,'T')
+     
+        # Calculate effective dimensions
+        
+        eff_dim = self.effective_size()
+    
+        # Extracting effective part of the fault. 
+        self.XFinMat = self.XFinMat[eff_dim[0]:eff_dim[1], 
+                                    eff_dim[2]:eff_dim[3]]
+        self.YFinMat = self.YFinMat[eff_dim[0]:eff_dim[1], 
+                                    eff_dim[2]:eff_dim[3]]
+        self.ZFinMat = self.ZFinMat[eff_dim[0]:eff_dim[1], 
+                                    eff_dim[2]:eff_dim[3]]
+        self.SlipinMat = self.SlipinMat[eff_dim[0]:eff_dim[1], 
+                                        eff_dim[2]:eff_dim[3]]
+        self.RiseTinMat = self.RiseTinMat[eff_dim[0]:eff_dim[1], 
+                                       eff_dim[2]:eff_dim[3]]
+        self.RupTinMat = self.RupTinMat[eff_dim[0]:eff_dim[1], 
+                                      eff_dim[2]:eff_dim[3]]
+       
+        self.ndip_in, self.nstk_in = self.XFinMat.shape
+        # Calculate length and output number of points in strike an dip direction        
+        self.stk_len_in = round((self.nstk_in-1)*self.dstk_in)
+        self.dip_len_in = round((self.ndip_in-1)*self.ddip_in)
+       
+        self.XFin3D = self.XFinMat.flatten(order='F').transpose()
+        self.YFin3D = self.YFinMat.flatten(order='F').transpose()
+        self.ZFin3D = self.ZFinMat.flatten(order='F').transpose()
+        self.Slipin3D = self.SlipinMat.flatten(order='F').transpose()
+        self.RiseTin3D = self.RiseTinMat.flatten(order='F').transpose()
+        self.RupTin3D = self.RiseTinMat.flatten(order='F').transpose()
+       
+        # Calculate magnitude and unitary vector of delta in strike direction 
+        vec_dstk = np.array([ self.XFinMat[0,1]-self.XFinMat[0,0], 
+                              self.YFinMat[0,1]-self.YFinMat[0,0],
+                              self.ZFinMat[0,1]-self.ZFinMat[0,0] ])
+        dstk_in = np.linalg.norm(vec_dstk)
+        self.univec_dstk = vec_dstk/dstk_in
+
+        # Calculate magnitude and unitary vector of delta in dip direction 
+        vec_ddip = np.array([ self.XFinMat[1,0]-self.XFinMat[0,0], 
+                              self.YFinMat[1,0]-self.YFinMat[0,0],
+                              self.ZFinMat[1,0]-self.ZFinMat[0,0] ])
+        ddip_in = np.linalg.norm(vec_ddip)
+        self.univec_ddip = vec_ddip/ddip_in
+
+        # Calculate output delta vector in strike and dip directions
+        self.dstkVec = self.univec_dstk*self.dhF
+        self.ddipVec = self.univec_ddip*self.dhF
+        self.dstk = np.linalg.norm(self.dstkVec)
+        self.ddip = np.linalg.norm(self.ddipVec)
+
+        # Calculate output fault's size
+        self.nstk = int(self.stk_len_in/self.dhF)+1
+        self.ndip = int(self.dip_len_in/self.dhF)+1
+       
+        # Define input and output strike and dip vectors
+        self.dipinVec = np.linspace(0, self.dip_len_in, self.ndip_in)
+        self.stkinVec = np.linspace(0, self.stk_len_in, self.nstk_in)
+        
+        self.stkVec = np.linspace(0, self.stk_len_in, self.nstk)
+        self.dipVec = np.linspace(0, self.dip_len_in, self.ndip)
+       
+        stk_len = round((self.nstk-1)*self.dstk)
+        dip_len = round((self.ndip-1)*self.ddip)
+      
+        print(" Output Fault Dimensions:")
+        print(" Strike (Km): %6.2f nstk: %d dstk (Km): %6.2f " 
+              %(stk_len/1000, self.nstk, self.dstk/1000) )
+        print(" Dip (Km): %6.2f ndip: %d ddip (Km): %6.2f" 
+              %(dip_len/1000, self.ndip, self.ddip/1000) )
+        
+  
+     
     # *************************************************************************
     # *                                                                       *
     # *              Interpolation methods section                            *
@@ -272,15 +436,14 @@ class Fault():
     def plot_xyz_slipin(self):
         io.renderers.default='svg'
             
-        colorbar=dict(lenmode='fraction', len=0.75, thickness=20, bordercolor="black",
-                      title="<b> slip(m) </b>", x=0.2)
+        colorbar=dict(lenmode='fraction', len=0.75, thickness=20, 
+                      bordercolor="black", title="<b> slip(m) </b>", x=0.2)
         
-        data = [go.Surface(x=self.XFinMat, y=self.YFinMat, z=self.ZFinMat, 
-                          surfacecolor=self.SlipinMat,
-                          colorscale=px.colors.sequential.Viridis, colorbar=colorbar, showscale=True,
-                          lighting=dict(ambient=0.7))]
-        
-        
+        data = [go.Surface(x=self.XFinMat/1000, y=self.YFinMat/1000,
+                           z=self.ZFinMat/1000, surfacecolor=self.SlipinMat,
+                           colorscale=px.colors.sequential.Viridis, 
+                           colorbar=colorbar, showscale=True,
+                           lighting=dict(ambient=0.7))]
         
         tickfont = dict(color="black", size=16, family="Arial Black")
         

@@ -7,11 +7,10 @@
 #
 # John Diaz June 2023
 #
-#from plotly.offline import download_plotlyjs, init_notebook_mode,  plot
-import plotly.graph_objects as go
+
 import warnings
 import Fault
-#init_notebook_mode()
+
 import plotly.io as io
 io.renderers.default='svg'
 if __name__ == '__main__':
@@ -31,7 +30,7 @@ if __name__ == '__main__':
     # Output dir for topo file
     out_dir = '../Outputs/3DFaults/'
 
-    dhF = 0.5  # Output subfaults size in Km
+    dhF = 500  # Output subfaults size in m
 
     # Creates a new instance of the Fault class
     LAquilaFault = Fault.Fault(name,dhF)
@@ -39,7 +38,9 @@ if __name__ == '__main__':
 
     LAquilaFault.load_mat_file('../Input/s2009LAQUIL03CIRE.mat')
    
-    #LAquilaFault.plot_xyz_slipin()
+    #LAquilaFault.set_full_fault()
+    LAquilaFault.set_effective_fault()
+    LAquilaFault.plot_xyz_slipin()
     LAquilaFault.interpolate_xyz_coords()
     LAquilaFault.interpolate_slip()
     LAquilaFault.interpolate_rise_time()
@@ -49,13 +50,13 @@ if __name__ == '__main__':
    # LAquilaFault.plot_xyz_model_slip()
     LAquilaFault.compare_xyz_slip()
 
-    LAquilaFault.triangulate_fault()
-    LAquilaFault.add_nodes_above_below()
-    LAquilaFault.plot_triangulation()
+    #LAquilaFault.triangulate_fault()
+    #LAquilaFault.add_nodes_above_below()
+    #LAquilaFault.plot_triangulation()
     
   
-    LAquilaFault.write_univector(out_dir)
-    LAquilaFault.save_fault(out_dir)
+    #LAquilaFault.write_univector(out_dir)
+    #LAquilaFault.save_fault(out_dir)
 
 
 

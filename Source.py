@@ -45,48 +45,7 @@ class Source():
         source += " Target Mw: " + str(self.target_Mw) + "\n"
         return source
     
-    def effective_size(self):
-        slip = self.SlipMat
-        # Cumulative slip in strike and dip direction
-        sum_slip_stk = np.sum(slip, axis=0)
-        sum_slip_dip = np.sum(slip, axis=1)
     
-        # Calculate the integral, and the effective length following
-        # Source Scaling Properties from Finite-Fault-Rupture Models (Mai & Beroza 2000)
-        acorr_stk = np.correlate(sum_slip_stk, sum_slip_stk, mode = 'full')
-        x_stk = np.arange(0, len(acorr_stk), 1, dtype=int)*self.dhF
-        Wacf_stk = integrate.simpson(acorr_stk, x_stk)/max(acorr_stk)
-      
-        acorr_dip = np.correlate(sum_slip_dip,sum_slip_dip, mode = 'full')
-        x_dip = np.arange(0, len(acorr_dip), 1, dtype=int)*self.dhF
-        Wacf_dip = integrate.simpson(acorr_dip, x_dip)/max(acorr_dip)
-     
-        print()
-        print(" Effective length in strike direction: %5.2f Km." % (Wacf_stk) )
-        print(" Effective length in dip direction: %5.2f Km." % (Wacf_dip) )
-  
-        # Calculate effective number of nodes
-        nstk_eff = int(Wacf_stk//self.dhF)+1
-        ndip_eff = int(Wacf_dip//self.dhF)+1
-        
-        istk = 0
-        jstk = nstk_eff
-        print(istk)
-        print(jstk)
-        sum_slip_eff = np.sum(np.sum(slip[:,istk:jstk], axis=0))
-        while( jstk <= self.nstk +1 ):
-            istk+=1
-            jstk+=1
-            # verificar el límite de jstk
-            sum_slip_tmp = np.sum(np.sum(slip[:,istk:jstk], axis=0))
-            print(f" i: {istk} j: {jstk} sum: {sum_slip_tmp} " )
-            if ( sum_slip_tmp > sum_slip_eff ):
-                istk_eff = istk
-                sum_slip_eff = sum_slip_tmp
-    
-        print(istk_eff)
-  
-        pass
         
     
     def set_mu_1d(self, vs, rho, h):
@@ -98,7 +57,6 @@ class Source():
         self.mu = np.zeros(self.ZF3D.size)
         
         for iz in range(self.ZF3D.size):
-            #print(iz)
             for ih in range(0,z.size-1):
                 if ( self.ZF3D[iz] <= z[ih] and self.ZF3D[iz] > z[ih+1]):
                     self.mu[iz] = vs[ih]*vs[ih]*rho[ih]*1e6
